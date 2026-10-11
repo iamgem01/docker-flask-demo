@@ -34,6 +34,18 @@ jobs:
             --cap-drop ALL \
             --security-opt no-new-privileges:true \
             docker-flask-demo:test
+            # Check QR page
+          curl --fail --silent --show-error --retry 5 --retry-connrefused --retry-delay 2 \
+            http://127.0.0.1:5000/qr | grep -q "Tạo mã QR của bạn"
+
+          # Check QR generation by submitting a URL
+          curl --fail --silent --show-error \
+            --retry 3 --retry-connrefused --retry-delay 2 \
+            -X POST \
+            -d "content=https://github.com/iamgem01/docker-flask-demo" \
+            http://127.0.0.1:5000/qr \
+            | grep -q "data:image/png;base64,"
+            
 
       - name: Test endpoints
         run: |
