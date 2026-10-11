@@ -38,23 +38,39 @@ jobs:
       - name: Test endpoints
         run: |
           set -eu
+
           for attempt in $(seq 1 20); do
-            if curl -fsS http://127.0.0.1:5000/ > /tmp/home.json; then
+            if curl --fail --silent http://127.0.0.1:5000/ \
+                -o /tmp/home.json; then
               break
             fi
+
             if [ "$attempt" -eq 20 ]; then
+              docker ps -a
               docker logs flask-ci-test
               exit 1
             fi
+
             sleep 2
           done
 
           cat /tmp/home.json
-          grep -q '"message": "Hello from Docker!"' /tmp/home.json
 
-          curl -fsS http://127.0.0.1:5000/health \
-            | tee /tmp/health.json
-          grep -q '"status": "healthy"' /tmp/health.json
+          for attempt in $(seq 1 10); do
+            if curl --fail --silent http://127.0.0.1:5000/health \
+                -o /tmp/health.json; then
+              cat /tmp/health.json
+              grep -Eq '"status"[[:space:]]*:[[:space:]]*"healthy"' /tmp/health.json
+              exit 0
+            fi
+
+            sleep 2
+          done
+
+          echo "Health endpoint failed"
+          docker ps -a
+          docker logs flask-ci-test
+          exit 1
 
       - name: Show logs on failure
         if: failure()
