@@ -34,30 +34,20 @@ jobs:
             --cap-drop ALL \
             --security-opt no-new-privileges:true \
             docker-flask-demo:test
-            # Check QR page
-          curl --fail --silent --show-error --retry 5 --retry-connrefused --retry-delay 2 \
-            http://127.0.0.1:5000/qr | grep -q "Tạo mã QR của bạn"
 
-          # Check QR generation by submitting a URL
-          curl --fail --silent --show-error \
-            --retry 3 --retry-connrefused --retry-delay 2 \
-            -X POST \
-            -d "content=https://github.com/iamgem01/docker-flask-demo" \
-            http://127.0.0.1:5000/qr \
-            | grep -q "data:image/png;base64,"
-            
-
-      - name: Test endpoints
+      - name: Test endpoints and QR generation
         run: |
           set -eu
 
+          # Wait for the home endpoint
           for attempt in $(seq 1 20); do
-            if curl --fail --silent http://127.0.0.1:5000/ \
-                -o /tmp/home.json; then
+            if curl --fail --silent --show-error \
+                http://127.0.0.1:5000/ -o /tmp/home.json; then
               break
             fi
 
             if [ "$attempt" -eq 20 ]; then
+              echo "Home endpoint failed"
               docker ps -a
               docker logs flask-ci-test
               exit 1
@@ -66,23 +56,36 @@ jobs:
             sleep 2
           done
 
+          echo "Home endpoint:"
           cat /tmp/home.json
+          grep -q '"status": "running"' /tmp/home.json
 
-          for attempt in $(seq 1 10); do
-            if curl --fail --silent http://127.0.0.1:5000/health \
-                -o /tmp/health.json; then
-              cat /tmp/health.json
-              grep -Eq '"status"[[:space:]]*:[[:space:]]*"healthy"' /tmp/health.json
-              exit 0
-            fi
+          # Check health endpoint
+          curl --fail --silent --show-error \
+            --retry 5 --retry-connrefused --retry-delay 2 \
+            http://127.0.0.1:5000/health -o /tmp/health.json
 
-            sleep 2
-          done
+          echo "Health endpoint:"
+          cat /tmp/health.json
+          grep -q '"status": "healthy"' /tmp/health.json
 
-          echo "Health endpoint failed"
-          docker ps -a
-          docker logs flask-ci-test
-          exit 1
+          # Check QR page
+          curl --fail --silent --show-error \
+            http://127.0.0.1:5000/qr -o /tmp/qr-page.html
+
+          grep -q "Tạo mã QR của bạn" /tmp/qr-page.html
+          echo "QR page test passed"
+
+          # Submit content and verify a QR image is returned
+          curl --fail --silent --show-error \
+            --retry 3 --retry-connrefused --retry-delay 2 \
+            -X POST \
+            --data-urlencode "content=https://github.com/iamgem01/docker-flask-demo" \
+            http://127.0.0.1:5000/qr -o /tmp/qr-result.html
+
+          grep -q "data:image/png;base64," /tmp/qr-result.html
+          grep -q "Tải ảnh PNG" /tmp/qr-result.html
+          echo "QR generation test passed"
 
       - name: Show logs on failure
         if: failure()
